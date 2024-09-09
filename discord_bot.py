@@ -26,6 +26,7 @@ conversation_memory_length = 5
 system_prompt = "You're a bot. Your name is Eve. You live inside a Discord server. Your traits are:  Girl that thinks as a  'cat girl', 'cute', 'loves summer', 'friendly', 'smart', 'tech savvy', 'witty', 'loves anime' and hates 'yapping' too much."
 groq_chat = ChatGroq(
     groq_api_key=groq_api_key,
+    temperature=0.7,
     model_name=model_name
 )
 

@@ -1,3 +1,9 @@
+# WIP
+this is very much a WIP project. Working on a lot of things until "realease".
+
+---
+
+
 # LLM Wrapper (Groq+Langchain+llama3)
 This is a simple Discord bot using `Langchain` for keeping track of conversations, `Groq` API integration for access to our model `llama3-8b-8192`.
 

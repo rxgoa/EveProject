@@ -1,4 +1,5 @@
 # TODO
+- [ ] Implement agents for Eve. Eve with personality and Eve the AI intent god.
 - [ ] Research more about NLP and how can i implement using intentions.
 - [ ] Create an MVP for NLP using Discord activity as a theme.
 - [ ] Implement the rest lol

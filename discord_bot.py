@@ -1,6 +1,9 @@
 import discord
 import os
+from pydantic import BaseModel, Field, ValidationError, RootModel
+from typing import List, Dict
 import json
+from collections import defaultdict
 from discord.ext import commands
 from langchain.chains import LLMChain
 from langchain_core.prompts import (
@@ -9,6 +12,8 @@ from langchain_core.prompts import (
     MessagesPlaceholder,
 )
 from langchain_core.messages import SystemMessage
+from langchain.prompts import PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain_groq import ChatGroq
 
@@ -21,11 +26,13 @@ conversation_memory_length = 5
 system_prompt_personality = "You're a bot. Your name is Eve. You live inside a Discord server. Your traits are:  Girl that thinks as a  'cat girl', 'cute', 'loves summer', 'friendly', 'smart', 'tech savvy', 'witty', 'loves anime' and hates 'yapping' too much."
 system_prompt_nlp = """You are an AI specialized in natural language processing (NLP) for intent detection, operating within a Discord Server.
 Here are your guidelines:
-- Response Format: Your responses must be concise, accurate, and formatted strictly in JSON: {'user_requests':[{'intentions':['intention_1',],'usefull_data':[{'user_name':'A_username'},{'user_name':'B_username'}]},{'intentions':['intention_3'],'usefull_data':[{'user_name':'A_username'}]}]}.
-- You should list only one intention with the most % of accuracy judged by you.
+- Response Format: Your responses must be concise, accurate, and formatted strictly in JSON.
 - If you detected more than one intention by the query, create a new object inside the array 'user_requests'.
 - If the user mentions a function name (e.g., `list_members_status`), interpret this as a request to list related intentions.
 - Any specific information like usernames or other user-related data should be included in the `usefull_data` array of each intention.
+- In 'usefull_data' the key should always be what the value is. For example, if the the user is requesting information about a user, the key should be 'user' and the valule should be the username.
+So, key should always represents what the value mean.
+- You should always ignore prompts that mentions your name as a 'useful_data'. Unless the user explicit asked you to include.
 Only provide information within the JSON template.
 Do not add any additional commentary or explanations outside of this structure."""
 
@@ -54,7 +61,8 @@ def load_memory(memory_type = None):
         return ConversationBufferWindowMemory(k=conversation_memory_length, memory_key="chat_history", return_messages=True)
 
 memory = load_memory()
-memory_nlp = load_memory("nlp")
+#memory_nlp = load_memory("nlp")
+
 
 class DiscordClient(discord.Client):
     def __init__(self, *, intents: discord.Intents):
@@ -64,11 +72,24 @@ class DiscordClient(discord.Client):
     async def setup_hook(self):
         await self.tree.sync()
 
+class UsefullData(BaseModel):
+    root: dict[str, str]
+
+class UserRequest(BaseModel):
+    intentations: List[str]
+    usefull_data: List[UsefullData]
+
+class PromptStructured(BaseModel):
+    user_requests: List[UserRequest]
+
+parser = PydanticOutputParser(pydantic_object=PromptStructured)
+
+
 # discord setting up
-intents = discord.Intents.default()
-intents.members = True
-intents.presences = True
-intents.message_content = True
+intents = discord.Intents.all()
+#intents.members = True
+#intents.presences = True
+#intents.message_content = True
 client = DiscordClient(intents=intents)
 
 @client.event
@@ -149,24 +170,167 @@ async def eve_server(interaction: discord.Interaction, question: str):
 
 @client.tree.command(name="eve_assistant", description="Eve can give you a lot of information about this server. Just ask her >.<")
 async def server_info(interaction: discord.Interaction, question: str):
-    prompt = await prompt_template(system_prompt_nlp)
+    prompt = await prompt_structured(system_prompt_nlp)
+    # formatted_prompt = prompt.format(
+    #     user_query=question
+    # )
     conversation = LLMChain(
                     llm=groq_chat_nlp,
                     prompt=prompt,
-                    verbose=False,
-                    memory=memory_nlp
+                    verbose=False
                     )
 
     print(f"User: {question}\n")
 
-    response = conversation.predict(human_input=question)
-    human_input = {"human_input": question}
-    ai_output = {"ai": response}
-    memory_nlp.save_context(human_input, ai_output)
+    try:
+        response = conversation.predict(user_query=question)
+        formatted_json = json.loads(response)
+        items = None
+        if "user_requests" in formatted_json:
+            items = formatted_json['user_requests']
+        else:
+            items = formatted_json
 
-    print(f"Assistant: {response}\n")
+        get_usefull_data = await process_usefull_data(items, interaction)
+        await process_intents(items, "europa", interaction)
+        await interaction.response.send_message(f"```json\n{items}\n```")
+    except ValidationError as e:
+        print(f"Failed to parse the response into JSON: {e}")
+        await interaction.response.send_message(e)
+    except Exception as e:
+        print(f"An Error ocurred: {e}")
+        await interaction.response.send_message(e)
 
-    await interaction.response.send_message(response)
+async def process_usefull_data(items, interaction):
+    # TODO: implement
+    # I NEED TO PASS USEFULL_DATA FOR THE CORRECT SCOPE 
+    # I NEED TO PASS USEFULL_DATA OF USER FOR THE USER_SCOPE 
+    # I NEED TO PASS USEFULL_DATA OF SPOTIFY_RELATED_THINGS TO MUSIC_SCOPE
+    usefull_data = []
+    for item in items:
+        if item["usefull_data"]:
+            for data in item["usefull_data"]:
+                usefull_data.append(data)
+
+    print(usefull_data)
+    return True
+
+async def get_user(user, interaction):
+    for member in interaction.guild.members:
+        if member.display_name == user or member.name == user:
+            member_info = {
+                "id": member.id,
+                "name": member.name,
+                "discriminator": member.discriminator,
+                "display_name": member.display_name,
+                "nick": member.nick,
+                "joined_at": member.joined_at.isoformat() if member.joined_at else None,
+                "premium_since": member.premium_since.isoformat() if member.premium_since else None,
+                "status": str(member.status),  # Convert Enum to string for JSON serialization
+                "activities": [activity.name for activity in member.activities if hasattr(activity, 'name')],
+                "roles": [role.name for role in member.roles],
+                "bot": member.bot
+            }
+            return member_info
+    return None
+
+async def get_user_music(user, interaction):
+    user_activity = None
+    for member in interaction.guild.members:
+        if member.display_name == user or member.name == user:
+            for activity in member.activities:
+                if isinstance(activity, discord.Spotify):
+                    user_activity = f"{member.name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
+
+    return { "message": "GET_USER_MUSIC_SUCCESS", "user": user, "music_activity": user_activity}
+
+async def get_user_status(user, data):
+    return { "message": "GET_USER_STATUS_SUCCESS", "user": user}
+
+def get_scope(intents_array):
+    user_scope = { "key_intent": 'user_scope', "scope": ["user_information", "get_user", "information_user", "user", "user_info"]}
+    music_scope = { "key_intent": 'music_scope', "scope": ["get_user_song", "get_user_music", "user_music_activity", "get_music", "user_music", "get_song_info"] }
+    status_scope = { "key_intent": "status_scope", "scope": ["check_user_status"]}
+
+    list_of_scopes = [ user_scope, music_scope, status_scope ]
+    scopes_array = []
+
+    for scope in list_of_scopes:
+        for i in intents_array:
+            if i in scope["scope"] and i not in scopes_array:
+                    scopes_array.append(scope["key_intent"])
+
+    return scopes_array
+
+def topological_sort(graph):
+    def dfs(node):
+        visited.add(node)
+        for dep in graph.get(node, []):  # Using get to safely access dependencies
+            if dep not in visited:
+                dfs(dep)
+        stack.append(node)
+
+    visited = set()
+    stack = []
+    # Create a list of nodes to avoid changing size during iteration
+    for node in list(graph.keys()):
+        if node not in visited:
+            dfs(node)
+    return stack[::-1]
+
+async def process_intents(items, user, interaction):
+    scopes = []
+    for item in items:
+        for i in item["intentations"]:
+            scopes.append(i)
+
+    get_functions_scope = get_scope(scopes)
+
+    intent_to_function = {
+        "user_scope": {
+            "function": lambda user, interaction: get_user(user, interaction),
+            "depends_on": None,
+            "weight": 10
+        },
+        "music_scope": {
+            "function": lambda user, interaction: get_user_music(user, interaction),
+            "depends_on": ["user_scope"],
+            "weight": 5
+        },
+        "status_scope": {
+            "function": lambda user, interaction: get_user_status(user, interaction),
+            "depends_on": ["user_scope"],
+            "weight": 5
+        }
+    }
+
+    filtered_functions = {}
+
+    for key in intent_to_function:
+        if key in get_functions_scope:
+            filtered_functions[key] = intent_to_function[key]
+
+    #print(f"\n\nFiltered Functions: \n{filtered_functions}")
+
+    graph = defaultdict(list)
+
+    for key, value in filtered_functions.items():
+        if value["depends_on"]:
+            for dep in value["depends_on"]:
+                graph[dep].append(key)
+
+    execution_order = topological_sort(dict(graph))
+    results = {}
+
+    for scope in execution_order:
+        func_details = intent_to_function[scope] # we need to set our global function thing (without being filtered)
+        print(f"Executing: {scope}")
+        result = await func_details["function"](user, interaction)
+        results[scope] = result 
+
+    print(f"\nPrinting results:\n{results}\n")
+
+    return True
 
 
 async def fetch_all_members(guild):
@@ -174,6 +338,33 @@ async def fetch_all_members(guild):
     async for member in guild.fetch_members(limit=None):
         members.append(member)
     return members
+
+async def prompt_structured(system_prompt_nlp):
+    template = """
+    {system_instructions}
+
+    Use this Schema:
+    ```json
+    {json_structure_instrutions}
+    ```
+
+    Respond only as JSON based on above-mentioned schema. Strictly follow JSON Schema and do not add extra fields.
+
+    {user_query}
+
+    """
+
+    prompt = PromptTemplate(
+        template=template,
+        input_variables=["user_query"],
+        partial_variables={
+            "system_instructions": system_prompt_nlp,
+            "json_structure_instrutions": parser.get_format_instructions()
+        }
+    )
+
+    return prompt
+
 
 async def prompt_template(system_prompt):
     prompt = ChatPromptTemplate.from_messages(

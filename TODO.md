@@ -1,5 +1,7 @@
 # TODO
-- [ ] Implement agents for Eve. Eve with personality and Eve the AI intent god.
+- [x] Implement LangChain's structured output.
+- [ ] Get `usefull_data` from input of user.
+- [ ] Implement agents for Eve. We will have two: Eve with personality and Eve intent.
 - [ ] Research more about NLP and how can i implement using intentions.
 - [ ] Create an MVP for NLP using Discord activity as a theme.
 - [ ] Implement the rest lol

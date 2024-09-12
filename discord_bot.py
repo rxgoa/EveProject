@@ -31,7 +31,7 @@ Here are your guidelines:
 - If the user mentions a function name (e.g., `list_members_status`), interpret this as a request to list related intentions.
 - Any specific information like usernames or other user-related data should be included in the `usefull_data` array of each intention.
 - In 'usefull_data' the key should always be what the value is. For example, if the the user is requesting information about a user, the key should be 'user' and the valule should be the username.
-So, key should always represents what the value mean.
+So, key should always represents what the value mean. The field 'usefull_data' should always be an array even if empty. Always set the string value to lowercase.
 - You should always ignore prompts that mentions your name as a 'useful_data'. Unless the user explicit asked you to include.
 Only provide information within the JSON template.
 Do not add any additional commentary or explanations outside of this structure."""
@@ -188,12 +188,15 @@ async def server_info(interaction: discord.Interaction, question: str):
         items = None
         if "user_requests" in formatted_json:
             items = formatted_json['user_requests']
+        elif isinstance(formatted_json, list):
+            print("inside the elif")
+            print(formatted_json)
+            items = formatted_json[0]
         else:
             items = formatted_json
 
-        get_usefull_data = await process_usefull_data(items, interaction)
-        await process_intents(items, "europa", interaction)
-        await interaction.response.send_message(f"```json\n{items}\n```")
+        result = await process_intents(items, interaction)
+        await interaction.response.send_message(f"```json\n{result}\n```")
     except ValidationError as e:
         print(f"Failed to parse the response into JSON: {e}")
         await interaction.response.send_message(e)
@@ -201,66 +204,79 @@ async def server_info(interaction: discord.Interaction, question: str):
         print(f"An Error ocurred: {e}")
         await interaction.response.send_message(e)
 
-async def process_usefull_data(items, interaction):
-    # TODO: implement
-    # I NEED TO PASS USEFULL_DATA FOR THE CORRECT SCOPE 
-    # I NEED TO PASS USEFULL_DATA OF USER FOR THE USER_SCOPE 
-    # I NEED TO PASS USEFULL_DATA OF SPOTIFY_RELATED_THINGS TO MUSIC_SCOPE
-    usefull_data = []
-    for item in items:
-        if item["usefull_data"]:
-            for data in item["usefull_data"]:
-                usefull_data.append(data)
+async def get_user(metadata, interaction):
+    user_list = []
+    members_list = []
+    print(f"\n\nmetadata: \n{metadata}")
+    for data in metadata:
+        for attr in data:
+            if attr == "user":
+                user_list.append(data["user"])
 
-    print(usefull_data)
-    return True
-
-async def get_user(user, interaction):
+    print(f"\n\nuser_list:\n{user_list}\n")
     for member in interaction.guild.members:
-        if member.display_name == user or member.name == user:
-            member_info = {
-                "id": member.id,
-                "name": member.name,
-                "discriminator": member.discriminator,
-                "display_name": member.display_name,
-                "nick": member.nick,
-                "joined_at": member.joined_at.isoformat() if member.joined_at else None,
-                "premium_since": member.premium_since.isoformat() if member.premium_since else None,
-                "status": str(member.status),  # Convert Enum to string for JSON serialization
-                "activities": [activity.name for activity in member.activities if hasattr(activity, 'name')],
-                "roles": [role.name for role in member.roles],
-                "bot": member.bot
-            }
-            return member_info
-    return None
+        for user in user_list:
+            if member.display_name == user or member.name == user:
+                members_list.append({
+                    "id": member.id,
+                    "name": member.name,
+                     "discriminator": member.discriminator,
+                     "display_name": member.display_name,
+                     "nick": member.nick,
+                     "joined_at": member.joined_at.isoformat() if member.joined_at else None,
+                     "premium_since": member.premium_since.isoformat() if member.premium_since else None,
+                     "status": str(member.status),
+                     "activities": [activity.name for activity in member.activities if hasattr(activity, 'name')],
+                     "roles": [role.name for role in member.roles],
+                     "bot": member.bot
+                })
+    print(f"\nmembers:\n{members_list}")
+    return members_list
 
-async def get_user_music(user, interaction):
-    user_activity = None
+# TODO: this function will be a generic 'activity' function.
+# because a user can have more than one activity besides playing music (gaming, etc)
+async def get_user_music(metadata, interaction):
+    print(f"\n\n\ncallind get_user_music:\n{metadata}")
+    music_activity = []
+    user_list = []
+
+    for data in metadata:
+        for attr in data:
+            if attr == "display_name":
+                user_list.append(data["display_name"])
+
+    print(f"\n\nuser_list: ---> \n{user_list}")
     for member in interaction.guild.members:
-        if member.display_name == user or member.name == user:
-            for activity in member.activities:
-                if isinstance(activity, discord.Spotify):
-                    user_activity = f"{member.name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
+        for user in user_list:
+            if member.display_name == user or member.name == user:
+                if len(member.activities) == 0:
+                    print(f"User {member.display_name} doesn't have any activities at the moment.")
+                else:
+                    for activity in member.activities:
+                        if isinstance(activity, discord.Spotify):
+                            music_activity.append({
+                                "listening": f"{member.display_name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify.",
+                                "user": member.display_name
+                            })
+                        else:
+                            music_activity.append({
+                                "listening": f"User {member.display_name} isn't listening to any song at the moment.",
+                                "user": member.display_name
+                            })
 
-    return { "message": "GET_USER_MUSIC_SUCCESS", "user": user, "music_activity": user_activity}
+    return music_activity
 
-async def get_user_status(user, data):
-    return { "message": "GET_USER_STATUS_SUCCESS", "user": user}
+async def get_user_status(metadata, data):
+    users_list_status = []
 
-def get_scope(intents_array):
-    user_scope = { "key_intent": 'user_scope', "scope": ["user_information", "get_user", "information_user", "user", "user_info"]}
-    music_scope = { "key_intent": 'music_scope', "scope": ["get_user_song", "get_user_music", "user_music_activity", "get_music", "user_music", "get_song_info"] }
-    status_scope = { "key_intent": "status_scope", "scope": ["check_user_status"]}
+    for user in metadata:
+        print(user)
+        users_list_status.append({
+            "user": user["display_name"],
+            "status": user["status"]
+        })
 
-    list_of_scopes = [ user_scope, music_scope, status_scope ]
-    scopes_array = []
-
-    for scope in list_of_scopes:
-        for i in intents_array:
-            if i in scope["scope"] and i not in scopes_array:
-                    scopes_array.append(scope["key_intent"])
-
-    return scopes_array
+    return users_list_status
 
 def topological_sort(graph):
     def dfs(node):
@@ -278,39 +294,112 @@ def topological_sort(graph):
             dfs(node)
     return stack[::-1]
 
-async def process_intents(items, user, interaction):
-    scopes = []
-    for item in items:
-        for i in item["intentations"]:
-            scopes.append(i)
+def get_functions_scope(intents_array, intent_to_function):
+    user_scope = { "key_intent": 'user_scope', "scope": ["user_information", "get_user", "information_user", "user", "user_info"]}
+    music_scope = { "key_intent": 'music_scope', "scope": ["get_user_song", "get_user_music", "user_music_activity", "get_music", "user_music", "get_song_info"] }
+    status_scope = { "key_intent": "status_scope", "scope": ["check_user_status"]}
 
-    get_functions_scope = get_scope(scopes)
+    list_of_scopes = [ user_scope, music_scope, status_scope ]
+    scopes_array = []
+
+    for scope in list_of_scopes:
+        for i in intents_array:
+            if i in scope["scope"] and i not in scopes_array:
+                # we need to check if our scoped function have a function that it depends on
+                # if so, we need to include that function even if our llm did not catch it.
+                key_intent = scope["key_intent"]
+                if intent_to_function[key_intent]["depends_on"] is None:
+                    scopes_array.append(scope["key_intent"])
+                else:
+                    for x in intent_to_function[key_intent]["depends_on"]:
+                        scopes_array.append(x)
+                    scopes_array.append(scope["key_intent"])
+
+    return scopes_array
+
+def extract_scopes_json(items):
+    scopes = []
+
+    for item in items:
+        print(item)
+        if "intentations" in item and not isinstance(item, list):
+            print("1")
+            for i in item["intentations"]:
+                scopes.append(i)
+        elif item == "intentations":
+            print("2")
+            for i in items.intentations:
+                scopes.append(i)
+        elif item == "user_requests":
+            print("3")
+            for i in items["user_requests"]:
+                for x in i["intentations"]:
+                    scopes.append(x)
+        elif item == "usefull_data":
+            print("usefull_data key.. ignoring")
+            scopes = scopes
+        else:
+            return False
+
+    return scopes
+
+async def process_intents(items, interaction):
+    scopes = extract_scopes_json(items)
+    print(f"\nitems:\n{items}\n\n")
+
+    if len(scopes) == 0:
+        return { "message": "Sorry, could not process your request :("}
+
+    print(f"\n\nscopes:{scopes}\n")
 
     intent_to_function = {
         "user_scope": {
-            "function": lambda user, interaction: get_user(user, interaction),
+            "function": lambda usefull_data_scope, interaction: get_user(usefull_data_scope, interaction),
+            "function_results": [],
             "depends_on": None,
+            "usefull_data": [],
             "weight": 10
         },
         "music_scope": {
-            "function": lambda user, interaction: get_user_music(user, interaction),
+            "function": lambda usefull_data_scope, interaction: get_user_music(usefull_data_scope, interaction),
+            "function_results": [],
             "depends_on": ["user_scope"],
+            "usefull_data": [],
             "weight": 5
         },
         "status_scope": {
-            "function": lambda user, interaction: get_user_status(user, interaction),
+            "function": lambda usefull_data_scope, interaction: get_user_status(usefull_data_scope, interaction),
+            "function_results": [],
             "depends_on": ["user_scope"],
+            "usefull_data": [],
             "weight": 5
         }
     }
 
+    functions_scope = get_functions_scope(scopes, intent_to_function.copy())
+    print(f"\n\nfunctions scope:\n{functions_scope}")
+
     filtered_functions = {}
 
+    print(f"\n\nprinting items.. {items}\n\n")
     for key in intent_to_function:
-        if key in get_functions_scope:
+        if key in functions_scope:
             filtered_functions[key] = intent_to_function[key]
+            for data_item in items:
+                if data_item == "usefull_data":
+                    for data_item_value in items["usefull_data"]:
+                        filtered_functions[key]["usefull_data"].append(data_item_value)
+                elif "usefull_data" in data_item:
+                    for data_item_value in data_item["usefull_data"]:
+                        filtered_functions[key]["usefull_data"].append(data_item_value)
+                elif data_item == "user_requests":
+                    for y in items["user_requests"]:
+                        if y["usefull_data"]:
+                            for x in y["usefull_data"]:
+                                filtered_functions[key]["usefull_data"].append(x)
 
-    #print(f"\n\nFiltered Functions: \n{filtered_functions}")
+
+    print(f"\n\nFiltered Functions: \n{filtered_functions}")
 
     graph = defaultdict(list)
 
@@ -321,16 +410,42 @@ async def process_intents(items, user, interaction):
 
     execution_order = topological_sort(dict(graph))
     results = {}
+    for i in execution_order:
+        print(f"\n\n scope -> {i}\n")
 
     for scope in execution_order:
         func_details = intent_to_function[scope] # we need to set our global function thing (without being filtered)
         print(f"Executing: {scope}")
-        result = await func_details["function"](user, interaction)
-        results[scope] = result 
+        result = None
 
-    print(f"\nPrinting results:\n{results}\n")
+        # if the function have value in `depends_on`, meaning, the function depends of another function to work
+        # we will get that value from the list `depends_on` and pass to the "child" function
+        if func_details["depends_on"] is not None:
+            previous_data = []
+            print("66666")
+            for dep in func_details["depends_on"]:
+                print(f"\ndep: -----> {dep}\n")
+                if len(previous_data) == 0:
+                    previous_data = intent_to_function[dep]["function_results"]
+                else:
+                    previous_data.append(intent_to_function[dep]["function_results"])
+            print(f"\n\nprevious data: ---->\n{previous_data}")
+            result = await func_details["function"](previous_data, interaction)
+        else:
+            print("\n\n\n\n8888888")
+            result = await func_details["function"](func_details["usefull_data"], interaction)
 
-    return True
+        #update our scoped function
+        print("\n\n\n\n999999999999")
+        func_details["function_results"] = result
+        intent_to_function[scope]["function_results"] = func_details["function_results"]
+
+        results[scope] = result
+
+
+    #print(f"\nPrinting results:\n{results}\n")
+
+    return results
 
 
 async def fetch_all_members(guild):

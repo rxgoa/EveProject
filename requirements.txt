@@ -1,6 +1,7 @@
 discord.py
 groq
-langchain==0.1.16
+python-dateutil
+langchain
 langchain-core
 langchain-groq
 pydantic

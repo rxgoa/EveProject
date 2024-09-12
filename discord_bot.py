@@ -46,7 +46,7 @@ groq_chat_personality = ChatGroq(
 groq_chat_nlp = ChatGroq(
     groq_api_key=groq_api_key,
     temperature=0,
-    model_name=model_name,
+    model_name="llama3-8b-8192",
     streaming=False,
     model_kwargs={
         "top_p": 0,

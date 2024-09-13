@@ -1,4 +1,5 @@
 import discord
+import math
 import os
 from pydantic import BaseModel, Field, ValidationError, RootModel
 from typing import List, Dict
@@ -12,7 +13,7 @@ from langchain_core.prompts import (
     MessagesPlaceholder,
 )
 from langchain_core.messages import SystemMessage
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, SystemMessagePromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain_groq import ChatGroq
@@ -128,6 +129,48 @@ async def ask(interaction: discord.Interaction, question: str):
     except Exception as e:
         print(e)
         await interaction.response.send_message(e)
+
+@client.tree.command(name="test", description="Testing automation between discord models and arrays.")
+async def testing(interaction: discord.Interaction, question: str):
+    if interaction.guild is None:
+        await interaction.response.send_message("This command can only used in a server.", ephemeral=True)
+        return
+
+    members = members_to_json(interaction.guild.members)
+
+    system_prompt = SystemMessagePromptTemplate.from_template(system_prompt_personality)
+    template_test = """You are given a list of Discord user profiles. Your task is to find information based on user queries. Here is the data:
+
+    {my_list}
+
+    Question: {my_question}
+
+    Answer:"""
+
+    human_prompt = PromptTemplate(template=template_test, input_variables=["my_list", "my_question"])
+    human_message = HumanMessagePromptTemplate(prompt=human_prompt)
+
+    chat_prompt = ChatPromptTemplate.from_messages([system_prompt, human_message])
+    groq_chat_nlp = ChatGroq(
+        groq_api_key=groq_api_key,
+        temperature=0.3,
+        model_name="llama3-8b-8192",
+        streaming=False,
+        max_tokens=8192
+    )
+
+    conversation = LLMChain(
+                    llm=groq_chat_nlp,
+                    prompt=chat_prompt,
+                    verbose=False
+                    )
+
+    members_json = json.loads(members)
+    result = await conversation.ainvoke({"my_list": members_json, "my_question": question})
+    with open("prompt.json", "w") as file:
+        json.dump({"my_list": members_json, "my_question": question}, file)
+
+    await interaction.response.send_message(result["text"])
 
 @client.tree.command(name="eve_server", description="Eve will get information about the current server she is in.")
 async def eve_server(interaction: discord.Interaction, question: str):
@@ -498,5 +541,58 @@ async def prompt_template(system_prompt):
 
     return prompt
 
+def members_to_json(members):
+    # Convert each member to a dictionary with selected attributes
+    members_data = []
+
+    for member in members:
+        member_info = {
+            "id": member.id,
+            "name": member.name,
+            "display_name": member.display_name,
+            "avatar": {
+                "url": member.avatar.url,
+                "key": member.avatar.key
+            } if member.avatar is not None else None,
+            "default_avatar": {
+                "url": member.default_avatar.url,
+                "key": member.default_avatar.key
+            } if member.default_avatar is not None else None,
+            "global_name": member.global_name,
+            "mention": member.mention,
+            "status": member.status.name,
+            "raw_status": member.raw_status,
+            "bot": member.bot,
+            "nick": member.nick,
+            "guild_id": member.guild.id,
+            "guild_name": member.guild.name,
+            "desktop_status": member.desktop_status,
+            "web_status": member.web_status,
+            "activities": [],
+            "roles": [role.name for role in member.roles],
+        }
+
+        for activity in member.activities:
+            if isinstance(activity, discord.Spotify):
+                member_info["activities"].append({
+                    "type": activity.type.name,
+                    "title": activity.title,
+                    "artists": activity.artists,
+                    "value": f"{member.display_name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
+                })
+            elif isinstance(activity, discord.BaseActivity):
+                member_info["activities"].append({
+                    "type": activity.type.name,
+                    "value": f"{activity.name}",
+                    "url": activity.url if hasattr(activity, 'url') and activity.url else None,
+                    "details": activity.details if hasattr(activity, 'details') and activity.details else None,
+                })
+        members_data.append(member_info)
+
+    # Convert to JSON
+
+    #return json.dumps(members_data, indent=2)
+    # for now we're return only 2 members because discord has a cap of 2000 in length for bot messages
+    return json.dumps(members_data, indent=2)
 
 run()

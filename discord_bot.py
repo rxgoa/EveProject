@@ -1,7 +1,9 @@
 import discord
 import math
 import os
+from collections import OrderedDict
 from pydantic import BaseModel, Field, ValidationError, RootModel
+from cachetools import TTLCache
 from typing import List, Dict
 import json
 from collections import defaultdict
@@ -17,6 +19,74 @@ from langchain.prompts import PromptTemplate, SystemMessagePromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from langchain_groq import ChatGroq
+from datetime import datetime
+
+#caching
+class CustomTTLCache:
+    def __init__(self, maxsize=128):
+        self.cache = OrderedDict()
+        self.maxsize = maxsize
+        self.timestamps = {}
+        self.ttls = {}
+        self.stats = {}
+
+    def set_with_ttl(self, key, value, ttl):
+        self.__setitem__(key, value, ttl)
+
+    def __setitem__(self, key, value, ttl):
+        if len(self.cache) >= self.maxsize:
+            self._popitem()
+
+        current_time = datetime.now()
+        self.cache[key] = value
+        self.timestamps[key] = current_time
+        self.ttls[key] = ttl if ttl is not None else float('inf')
+        self.stats[key] = {'hits': 0, 'misses': 0, 'last_access': current_time.strftime("%Y-%m-%dT%H:%M:%S")}
+
+    def __getitem__(self, key):
+        try:
+            current_time = datetime.now()
+            if key not in self.cache or (current_time - self.timestamps[key]).total_seconds() > self.ttls[key]:
+                raise KeyError(key)  # Treat as a miss if expired or not found
+
+            # Update stats for hit
+            self.stats[key]['hits'] += 1
+            self.stats[key]['last_access'] = current_time.strftime("%Y-%m-%dT%H:%M:%S")
+            self.cache.move_to_end(key)  # Move to end to mark as recently used
+            return self.cache[key]
+        except KeyError:
+            # Update stats for miss
+            if key in self.stats:
+                self.stats[key]['misses'] += 1
+            else:
+                self.stats[key] = {'hits': 0, 'misses': 1, 'last_access': None}
+            raise
+
+    def _popitem(self):
+        key, _ = self.cache.popitem(last=False)
+        del self.timestamps[key]
+        del self.ttls[key]
+        del self.stats[key]
+
+    def get_stats(self, key):
+        return self.stats.get(key, {'hits': 0, 'misses': 0, 'last_access': None})
+
+    def global_stats(self):
+        total_hits = sum(stats['hits'] for stats in self.stats.values())
+        total_misses = sum(stats['misses'] for stats in self.stats.values())
+        return {'total_hits': total_hits, 'total_misses': total_misses}
+
+    def __contains__(self, key):
+        try:
+            self[key]
+            return True
+        except KeyError:
+            return False
+
+    def __len__(self):
+        return len(self.cache)
+
+cache = CustomTTLCache(maxsize=50)
 
 # keys and models
 groq_api_key = os.environ['GROQ_API_KEY']
@@ -24,7 +94,7 @@ discord_eve_key = os.environ['DISCORD_EVE_KEY']
 model_name = "llama3-8b-8192"
 conversation_memory_length = 5
 # system prompt
-system_prompt_personality = "You're a bot. Your name is Eve. You live inside a Discord server. Your traits are:  Girl that thinks as a  'cat girl', 'cute', 'loves summer', 'friendly', 'smart', 'tech savvy', 'witty', 'loves anime' and hates 'yapping' too much."
+system_prompt_personality = "You're a bot. Your name is Eve. You live inside a Discord server. Your traits are:  'cat girl', 'cute', 'loves summer', 'friendly', 'smart', 'tech savvy', 'witty', 'loves anime' and hates 'yapping'."
 system_prompt_nlp = """You are an AI specialized in natural language processing (NLP) for intent detection, operating within a Discord Server.
 Here are your guidelines:
 - Response Format: Your responses must be concise, accurate, and formatted strictly in JSON.
@@ -64,7 +134,6 @@ def load_memory(memory_type = None):
 memory = load_memory()
 #memory_nlp = load_memory("nlp")
 
-
 class DiscordClient(discord.Client):
     def __init__(self, *, intents: discord.Intents):
         super().__init__(intents=intents)
@@ -85,12 +154,12 @@ class PromptStructured(BaseModel):
 
 parser = PydanticOutputParser(pydantic_object=PromptStructured)
 
-
 # discord setting up
 intents = discord.Intents.all()
-#intents.members = True
-#intents.presences = True
-#intents.message_content = True
+intents.members = True
+intents.presences = True
+intents.message_content = True
+#intents.read_message_history = True
 client = DiscordClient(intents=intents)
 
 @client.event
@@ -104,6 +173,145 @@ async def on_ready():
 
 def run():
     client.run(discord_eve_key)
+
+def get_all_channels(channels):
+    if "get_all_channels" in cache:
+        return cache["get_all_channels"]
+
+    channels_server = []
+    for channel in channels:
+        channels_server.append({
+            "id": channel.id,
+            "category": {
+                "nsfw": channel.category.nsfw,
+                "name": channel.category.name
+            } if channel.category is not None else None,
+            "changed_roles": channel.changed_roles,
+            "created_at": channel.created_at,
+            "jump_url": channel.jump_url,
+            "mention": channel.mention,
+            "name": channel.name
+        })
+    cache.set_with_ttl("get_all_channels", channels_server, 1200)
+    return channels_server
+
+@client.tree.command(name="test", description="Testing automation between discord models and arrays.")
+async def testing(interaction: discord.Interaction, question: str):
+    if interaction.guild is None:
+        await interaction.response.send_message("This command can only used in a server.", ephemeral=True)
+        return
+
+    members = get_all_members(interaction.guild.members)
+    channels_server = get_all_channels(interaction.guild.channels)
+
+    print(f"\ncache stats get_all_channels: {cache.get_stats("get_all_channels")}\n")
+    print(f"\ncache stats get_all_members: {cache.get_stats("get_all_members")}\n")
+
+    channel_id = 1283066463686492162
+
+    channel_info = interaction.client.get_channel(channel_id)
+
+    async for message in channel_info.history(limit=100, oldest_first=True):
+        print(f"{message.author}@{message.channel.name}: {message.content}")
+
+    system_prompt = SystemMessagePromptTemplate.from_template(system_prompt_personality)
+    template_test = """
+    You are given a list of Discord user profiles. Your task is to find information based on user queries.
+    Every information you find about the query you should user MarkDown language to highlight.
+    You should add cosmetic decoration if necessary. If you add context for information missing, you should put a cute flare.
+    Only show information necessary based on the user query.
+
+    Here is the data:
+
+    {my_list}
+
+    Question: {my_question}
+
+    Answer:"""
+
+    human_prompt = PromptTemplate(template=template_test, input_variables=["my_list", "my_question"])
+    human_message = HumanMessagePromptTemplate(prompt=human_prompt)
+
+    chat_prompt = ChatPromptTemplate.from_messages([system_prompt, human_message])
+    groq_chat_nlp = ChatGroq(
+        groq_api_key=groq_api_key,
+        temperature=0.6,
+        model_name="llama3-70b-8192",
+        streaming=False,
+        max_tokens=8192
+    )
+
+    conversation = LLMChain(
+                    llm=groq_chat_nlp,
+                    prompt=chat_prompt,
+                    verbose=False
+                    )
+
+    result = await conversation.ainvoke({"my_list": members, "my_question": question})
+    with open("prompt.json", "w") as file:
+        json.dump({"my_list": members, "my_question": question}, file)
+
+    await interaction.response.send_message(result["text"], ephemeral=True)
+
+
+def get_all_members(members):
+    if "get_all_members" in cache:
+        return cache["get_all_members"]
+
+    members_data = []
+
+    for member in members:
+        member_info = {
+            "id": member.id,
+            "name": member.name,
+            "display_name": member.display_name,
+            "avatar": {
+                "url": member.avatar.url,
+                "key": member.avatar.key
+            } if member.avatar is not None else None,
+            "status": member.status.name,
+            "raw_status": member.raw_status,
+            "bot": member.bot,
+            "activities": [],
+            "roles": [role.name for role in member.roles],
+        }
+
+        for activity in member.activities:
+            if isinstance(activity, discord.Spotify):
+                member_info["activities"].append({
+                    "type": activity.type.name,
+                    "title": activity.title,
+                    "artists": activity.artists,
+                    "track_url": activity.track_url,
+                    "track_id":activity.track_id,
+                    "album_cover_url": activity.album_cover_url,
+                    "value": f"{member.display_name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
+                })
+            elif isinstance(activity, discord.BaseActivity):
+                member_info["activities"].append({
+                    "type": activity.type.name,
+                    "value": f"{activity.name}",
+                    "url": activity.url if hasattr(activity, 'url') and activity.url else None,
+                    "details": activity.details if hasattr(activity, 'details') and activity.details else None,
+                })
+        members_data.append(member_info)
+
+    cache.set_with_ttl("get_all_members", members_data, 5)
+    return members_data
+
+
+#
+#
+#
+#
+#
+#
+# old code bellow \/
+#
+#
+#
+#
+#
 
 @client.tree.command(name="ask_eve", description="Ask Eve a question >.<")
 async def ask(interaction: discord.Interaction, question: str):
@@ -129,87 +337,6 @@ async def ask(interaction: discord.Interaction, question: str):
     except Exception as e:
         print(e)
         await interaction.response.send_message(e)
-
-@client.tree.command(name="test", description="Testing automation between discord models and arrays.")
-async def testing(interaction: discord.Interaction, question: str):
-    if interaction.guild is None:
-        await interaction.response.send_message("This command can only used in a server.", ephemeral=True)
-        return
-
-    members = members_to_json(interaction.guild.members)
-
-    system_prompt = SystemMessagePromptTemplate.from_template(system_prompt_personality)
-    template_test = """You are given a list of Discord user profiles. Your task is to find information based on user queries. Here is the data:
-
-    {my_list}
-
-    Question: {my_question}
-
-    Answer:"""
-
-    human_prompt = PromptTemplate(template=template_test, input_variables=["my_list", "my_question"])
-    human_message = HumanMessagePromptTemplate(prompt=human_prompt)
-
-    chat_prompt = ChatPromptTemplate.from_messages([system_prompt, human_message])
-    groq_chat_nlp = ChatGroq(
-        groq_api_key=groq_api_key,
-        temperature=0.3,
-        model_name="llama3-8b-8192",
-        streaming=False,
-        max_tokens=8192
-    )
-
-    conversation = LLMChain(
-                    llm=groq_chat_nlp,
-                    prompt=chat_prompt,
-                    verbose=False
-                    )
-
-    members_json = json.loads(members)
-    result = await conversation.ainvoke({"my_list": members_json, "my_question": question})
-    with open("prompt.json", "w") as file:
-        json.dump({"my_list": members_json, "my_question": question}, file)
-
-    await interaction.response.send_message(result["text"])
-
-@client.tree.command(name="eve_server", description="Eve will get information about the current server she is in.")
-async def eve_server(interaction: discord.Interaction, question: str):
-    if interaction.guild is None:
-        await interaction.response.send_message("This command can only used in a server.", ephemeral=True)
-        return
-
-    print(interaction.guild.members)
-    total_members = len(interaction.guild.members)
-    online = sum(1 for member in interaction.guild.members if member.status == discord.Status.online)
-    idle = sum(1 for member in interaction.guild.members if member.status == discord.Status.idle)
-    dnd = sum(1 for member in interaction.guild.members if member.status == discord.Status.do_not_disturb)
-    offline = sum(1 for member in interaction.guild.members if member.status == discord.Status.offline or member.status == discord.Status.invisible)
-    channel_names = []
-    members_name = []
-
-    for channel in interaction.guild.channels:
-        if channel.type == discord.ChannelType.text:
-            channel_names.append(channel.name)
-            #channel_names.append(f"Channel Name: {channel.name}, Type: Text, Topic: {getattr(channel, 'topic', 'None')}")
-        if channel.type == discord.ChannelType.voice:
-            channel_names.append(channel.name)
-            #channel_names.append(f"Channel Name: {channel.name}, Type: Voice, Topic: {getattr(channel, 'topic', 'None')}")
-
-    for member in interaction.guild.members:
-        members_name.append(f"user:{member.display_name},status:{member.status}")
-
-    message = (
-        f"Server Member Count:\n"
-        f"Total Members: {total_members}\n"
-        f"Online: {online}\n"
-        f"Idle: {idle}\n"
-        f"DND: {dnd}\n"
-        f"Offline: {offline}\n"
-        f"Members: {members_name}\n"
-        f"Channels: {channel_names}\n"
-    )
-
-    await interaction.response.send_message(message)
 
 @client.tree.command(name="eve_assistant", description="Eve can give you a lot of information about this server. Just ask her >.<")
 async def server_info(interaction: discord.Interaction, question: str):
@@ -541,58 +668,5 @@ async def prompt_template(system_prompt):
 
     return prompt
 
-def members_to_json(members):
-    # Convert each member to a dictionary with selected attributes
-    members_data = []
-
-    for member in members:
-        member_info = {
-            "id": member.id,
-            "name": member.name,
-            "display_name": member.display_name,
-            "avatar": {
-                "url": member.avatar.url,
-                "key": member.avatar.key
-            } if member.avatar is not None else None,
-            "default_avatar": {
-                "url": member.default_avatar.url,
-                "key": member.default_avatar.key
-            } if member.default_avatar is not None else None,
-            "global_name": member.global_name,
-            "mention": member.mention,
-            "status": member.status.name,
-            "raw_status": member.raw_status,
-            "bot": member.bot,
-            "nick": member.nick,
-            "guild_id": member.guild.id,
-            "guild_name": member.guild.name,
-            "desktop_status": member.desktop_status,
-            "web_status": member.web_status,
-            "activities": [],
-            "roles": [role.name for role in member.roles],
-        }
-
-        for activity in member.activities:
-            if isinstance(activity, discord.Spotify):
-                member_info["activities"].append({
-                    "type": activity.type.name,
-                    "title": activity.title,
-                    "artists": activity.artists,
-                    "value": f"{member.display_name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
-                })
-            elif isinstance(activity, discord.BaseActivity):
-                member_info["activities"].append({
-                    "type": activity.type.name,
-                    "value": f"{activity.name}",
-                    "url": activity.url if hasattr(activity, 'url') and activity.url else None,
-                    "details": activity.details if hasattr(activity, 'details') and activity.details else None,
-                })
-        members_data.append(member_info)
-
-    # Convert to JSON
-
-    #return json.dumps(members_data, indent=2)
-    # for now we're return only 2 members because discord has a cap of 2000 in length for bot messages
-    return json.dumps(members_data, indent=2)
 
 run()

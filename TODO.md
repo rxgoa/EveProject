@@ -5,7 +5,7 @@
 - [x] Start creating function calling for my model.
 - [x] Start removing old code and simplify codebase with new logic.
 - [ ] Implement functions:
-  - [ ] server_info
+  - [ ] server_info (fix issue passing interaction)
   - [ ] filter a channel by limiting the search (eg: get last 3 messages, get message with a specific term etc.) and then try fun things like: ask eve the tldr; from the server (what people are talking about)
   - [ ] get_all_channels (without filtering)
   - [ ] members

@@ -199,18 +199,83 @@ class get_channel_history_by_id(BaseTool):
         pass
 
     async def _arun(self, channel_id=None):
-        client_scope = get_interaction_scope()
-        channel = client_scope.client.get_channel(int(channel_id))
+        interaction_scope = get_interaction_scope()
+        channel = interaction_scope.client.get_channel(int(channel_id))
         messages = []
         async for message in channel.history(limit=100, oldest_first=True):
             messages.append(f"{message.author}@{message.channel.name}: {message.content}")
         return messages
+
+def get_members_guild(guild):
+    members_data = []
+    guild_json = json.loads(guild)
+
+    print(f"\n\n\n\n11111\n{guild}\n\n")
+    for member in guild:
+        print(f"\n\n\n\n2222\n\n\n")
+        print(f"\n\nmember id: {member}\n\n")
+        member_info = {
+            "id": member["id"],
+            "name": member["name"],
+            "display_name": member["display_name"],
+            "avatar": {
+                "url": member["avatar"]["url"],
+                "key": member["avatar"]["key"]
+            } if member["avatar"] is not None else None,
+            "status": member["status"]["name"],
+            "raw_status": member["raw_status"],
+            "bot": member["bot"],
+            "activities": [],
+            "roles": [role["name"] for role in member["roles"]],
+        }
+
+        for activity in member["activities"]:
+            if isinstance(activity, discord.Spotify):
+                member_info["activities"].append({
+                    "type": activity.type.name,
+                    "title": activity.title,
+                    "artists": activity.artists,
+                    "track_url": activity.track_url,
+                    "track_id":activity.track_id,
+                    "album_cover_url": activity.album_cover_url,
+                    "value": f"{member.display_name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
+                })
+            elif isinstance(activity, discord.BaseActivity):
+                member_info["activities"].append({
+                    "type": activity.type.name,
+                    "value": f"{activity.name}",
+                    "url": activity.url if hasattr(activity, 'url') and activity.url else None,
+                    "details": activity.details if hasattr(activity, 'details') and activity.details else None,
+                })
+        members_data.append(member_info)
+
+
+    return members_data
+
+def get_server_info(input):
+    interaction_scope = get_interaction_scope()
+    guild = {
+        "members": interaction_scope.guild.members
+    }
+    return json.dumps(guild, indent=2)
 
 tools = [
     Tool(
         name="get_channel_by_name",
         func=get_channel_by_name,
         description="This function helps to retrieve channel information, given argument: 'name' (the channel's name). This function doesn't depend of other functions to work."
+    ),
+     Tool(
+        name="get_server_info",
+        func=get_server_info,
+        description="""This function helps to retrieve server information. This function doesn't depend of other functions to work."""
+    ),
+    Tool(
+        name="get_members_guild",
+        func=get_members_guild,
+        description="""Takes the output from the function 'get_server_info'.
+        This function helps retrieve information about all members of the guild, given as input from the output of function 'get_server_info'.
+        Please process 'get_members_guild' always first."""
     ),
     get_channel_history_by_id()
 ]
@@ -242,11 +307,12 @@ async def testing(interaction: discord.Interaction, question: str):
         await interaction.response.send_message("This command can only used in a server.", ephemeral=True)
         return
 
-    await interaction.response.send_message("Processing your request.. ⌛", ephemeral=True)
+    await interaction.response.send_message("Processing your request.. ⌛", ephemeral=True) # ephemeral == only the user who sent the message will see
 
-    get_interaction_scope(interaction)
-    get_all_members(interaction.guild.members)
-    get_all_channels(interaction.guild.channels)
+    interaction_scope = get_interaction_scope(interaction)
+    get_all_info_server(interaction_scope.guild)
+    get_all_members(interaction_scope.guild.members)
+    get_all_channels(interaction_scope.guild.channels)
 
     groq_chat_nlp = ChatGroq(
         groq_api_key=groq_api_key,
@@ -278,13 +344,14 @@ async def testing(interaction: discord.Interaction, question: str):
     )
 
     tool_names = [tool.name for tool in tools]
+
     agent = create_react_agent(
         llm=groq_chat_nlp,
         prompt=prompt_custom,
         tools=tools
     )
 
-    agent_executor = AgentExecutor.from_agent_and_tools(agent, tools, handle_parsing_errors=True, verbose=True)
+    agent_executor = AgentExecutor.from_agent_and_tools(agent, tools, handle_parsing_errors=True, verbose=True, max_iterations=3)
 
     try:
         result = await agent_executor.ainvoke({"input": question})
@@ -317,6 +384,21 @@ def get_interaction_scope(interaction: discord.Interaction = None):
 
     cache.set_with_ttl("get_interaction_scope", interaction, 60)
     return interaction
+
+# guild == server. aka server that the message was sent from.
+def get_all_info_server(guild: discord.Guild = None):
+    if "get_all_info_server" in cache or guild is None:
+        return cache["get_all_info_server"]
+
+    # fetch members
+    # fetch
+    members = []
+    for member in guild.members:
+        print(f"member: {member.name}\n ")
+
+    cache.set_with_ttl("get_all_info_server", guild, 60)
+    return guild
+
 
 def get_all_members(members):
     if "get_all_members" in cache:

@@ -2,6 +2,7 @@ import discord
 import math
 import os
 import re
+import ujson
 import json
 from collections import defaultdict
 from datetime import datetime
@@ -97,7 +98,7 @@ discord_eve_key = os.environ['DISCORD_EVE_KEY']
 model_name = "llama3-8b-8192"
 conversation_memory_length = 5
 # system prompt
-system_prompt_personality = "You're a bot. Your name is Eve. You live inside a Discord server. Your traits are:  'cat girl', 'cute', 'loves summer', 'friendly', 'smart', 'tech savvy', 'witty', 'loves anime' and hates 'yapping'. You will receive the user input and you shold rewrite it in your cute little way. Never change data that will be pass to you, ok? I'm counting on you."
+system_prompt_personality = "You're a bot. Your name is Eve. You live inside a Discord server. Your traits are:  'cat girl', 'passive agressive', 'smart', 'witty'. You will receive the user input and you shold rewrite it in your own words without yapping too much. Try to format your response in Markdown text. Never change data that will be pass to you, ok? I'm counting on you."
 system_prompt_nlp = """You are an AI specialized in natural language processing (NLP) for intent detection, operating within a Discord Server.
 Here are your guidelines:
 - Response Format: Your responses must be concise, accurate, and formatted strictly in JSON.
@@ -112,7 +113,7 @@ Do not add any additional commentary or explanations outside of this structure."
 
 groq_chat_personality = ChatGroq(
     groq_api_key=groq_api_key,
-    temperature=0.7,
+    temperature=0.3,
     model_name=model_name,
     streaming=False
 )
@@ -183,100 +184,107 @@ def run():
 #
 #
 #
-
 def get_channel_by_name(name):
     channels = get_all_channels()
     for channel in channels:
         if channel["name"] in name:
-            return channel
+            iso_format = channel["created_at"].isoformat() if isinstance(channel["created_at"], datetime) else channel["created_at"]
+            channel["created_at"] = iso_format
+            return json.dumps(channel, indent=2)
+
+class ChannelId(BaseTool):
+    id: int
 
 # We need to declare our custom tool like this because our function depends of async operations.
 class get_channel_history_by_id(BaseTool):
     name = "get_channel_history_by_id"
-    description = "Takes the output from function 'get_channel_by_name'. This function helps to retrieve channel history information, given argument: 'id' (the channel's id). This function depends on the output of 'get_channel_by_name'. Please process 'get_channel_by_name' always first."
+    description = """
+    This function helps to retrieve channel history information, given argument: 'id' (the channel's id).
+    Takes the output from function this functions: 'get_channel_by_name'.
+    This function depends on the output of 'get_channel_by_name'.
+    Please process 'get_channel_by_name' always first.
+    This function doesn't call other functions after being executed."""
+    args_schema=ChannelId
 
     def _run(self):
         pass
 
-    async def _arun(self, channel_id=None):
+    async def _arun(self, channel_id):
         interaction_scope = get_interaction_scope()
+
         channel = interaction_scope.client.get_channel(int(channel_id))
         messages = []
         async for message in channel.history(limit=100, oldest_first=True):
             messages.append(f"{message.author}@{message.channel.name}: {message.content}")
         return messages
 
-def get_members_guild(guild):
-    members_data = []
-    guild_json = json.loads(guild)
+class get_members_server(BaseTool):
+        name = "get_members_server"
+        description="""Takes the output from the function 'get_server_info'.
+        This function helps retrieve information about all members(status, name, activities etc) of the guild, given as input from the output of function 'get_server_info'.
+        Please process 'get_members_server' always after 'get_members_server'."""
 
-    print(f"\n\n\n\n11111\n{guild}\n\n")
-    for member in guild:
-        print(f"\n\n\n\n2222\n\n\n")
-        print(f"\n\nmember id: {member}\n\n")
-        member_info = {
-            "id": member["id"],
-            "name": member["name"],
-            "display_name": member["display_name"],
-            "avatar": {
-                "url": member["avatar"]["url"],
-                "key": member["avatar"]["key"]
-            } if member["avatar"] is not None else None,
-            "status": member["status"]["name"],
-            "raw_status": member["raw_status"],
-            "bot": member["bot"],
-            "activities": [],
-            "roles": [role["name"] for role in member["roles"]],
-        }
+        def _run(self):
+            self
 
-        for activity in member["activities"]:
-            if isinstance(activity, discord.Spotify):
-                member_info["activities"].append({
-                    "type": activity.type.name,
-                    "title": activity.title,
-                    "artists": activity.artists,
-                    "track_url": activity.track_url,
-                    "track_id":activity.track_id,
-                    "album_cover_url": activity.album_cover_url,
-                    "value": f"{member.display_name} is listening to {activity.title} by {', '.join(activity.artists)} on Spotify."
-                })
-            elif isinstance(activity, discord.BaseActivity):
-                member_info["activities"].append({
-                    "type": activity.type.name,
-                    "value": f"{activity.name}",
-                    "url": activity.url if hasattr(activity, 'url') and activity.url else None,
-                    "details": activity.details if hasattr(activity, 'details') and activity.details else None,
-                })
-        members_data.append(member_info)
+        async def _arun(self, guild: discord.Guild):
+            ##
+            #
+            #
+            #
+            #
+            # TODO: im getting error when prompting "is anyone listening to music right now?"
+            #
+            #
+            #
+            #
 
-
-    return members_data
+            print(f"\ncalling _arun for get_members_server!!!\n\n")
+            print(type(guild))
+            json_guild = json.loads(guild)
+            print(json_guild)
+            return json_guild["members"]
 
 def get_server_info(input):
     interaction_scope = get_interaction_scope()
-    guild = {
-        "members": interaction_scope.guild.members
+    print(f"\n\nGET_SERVER_INFO\n\n")
+    guild = interaction_scope.guild
+    server_info = {
+        "name": guild.name,
+        "id": guild.id,
+        "owner": guild.owner.name if guild.owner else "Unknown",
+        "member_count": guild.member_count,
+        "channels": [channel.name for channel in guild.channels],
+        "members": get_all_members(guild.members)
     }
-    return json.dumps(guild, indent=2)
+
+    return json.dumps(server_info, indent=2)
 
 tools = [
     Tool(
         name="get_channel_by_name",
         func=get_channel_by_name,
-        description="This function helps to retrieve channel information, given argument: 'name' (the channel's name). This function doesn't depend of other functions to work."
+        description="""This function helps to retrieve channel information, given argument: 'name' (the channel's name).
+        This function doesn't depend of other functions to work.""",
+        response_format={
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                }
+            },
+            "required": ["id"]
+        }
     ),
      Tool(
         name="get_server_info",
         func=get_server_info,
-        description="""This function helps to retrieve server information. This function doesn't depend of other functions to work."""
+        description="""
+        This function helps to retrieve server information.
+        This function doesn't depend of other functions to work.
+        You should only call this functions that have this function as dependencie: get_members_information_guild."""
     ),
-    Tool(
-        name="get_members_guild",
-        func=get_members_guild,
-        description="""Takes the output from the function 'get_server_info'.
-        This function helps retrieve information about all members of the guild, given as input from the output of function 'get_server_info'.
-        Please process 'get_members_guild' always first."""
-    ),
+    get_members_server(),
     get_channel_history_by_id()
 ]
 
@@ -316,7 +324,7 @@ async def testing(interaction: discord.Interaction, question: str):
 
     groq_chat_nlp = ChatGroq(
         groq_api_key=groq_api_key,
-        temperature=0.3,
+        temperature=0,
         model_name="llama3-70b-8192",
         streaming=False,
         max_tokens=8192
@@ -333,8 +341,8 @@ async def testing(interaction: discord.Interaction, question: str):
 
             Question: {input}
             Thought: you should always think about what to do
-            Action: the action to take, should be one of [{tool_names}]
-            Action Input: the input to the action
+            Action: the action to take, should be one of [{tool_names}]. If your Action is None, just process the information in your current tool.
+            Action Input: the input to the action. Your Action Input is always only the output of your Action. Never submit observations.
             Observation: the result of the action
             ... (this Thought/Action/Action Input/Observation can repeat N times)
             Thought: I now know the final answer. If you know the final answer you don't need to repeat the chain.
@@ -355,7 +363,7 @@ async def testing(interaction: discord.Interaction, question: str):
 
     try:
         result = await agent_executor.ainvoke({"input": question})
-        with open("prompt.json", "w") as file:
+        with open("prompt_result.json", "w") as file:
             json.dump(result, file)
 
         #TODO: i need now to get the output and pass to Eve (with her personality)
@@ -390,8 +398,6 @@ def get_all_info_server(guild: discord.Guild = None):
     if "get_all_info_server" in cache or guild is None:
         return cache["get_all_info_server"]
 
-    # fetch members
-    # fetch
     members = []
     for member in guild.members:
         print(f"member: {member.name}\n ")

@@ -4,6 +4,7 @@ python-dateutil
 langchain
 langchain-core
 langchain-groq
+ujson
 pydantic
 typing
 cachetools

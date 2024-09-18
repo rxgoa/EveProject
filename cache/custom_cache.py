@@ -66,5 +66,6 @@ class CustomTTLCache:
     def __len__(self):
         return len(self.cache)
 
-print(f"\n\n\n\n\n\nCACHEEEEEEEEEEEEE\n\n\n\n")
+print(f"Setting up instance cache..")
 cache = CustomTTLCache(maxsize=50)
+print(f"Instance cache completed!")

@@ -19,8 +19,8 @@ groq_chat_tool_func = ChatGroq(
       groq_api_key=groq_api_key,
       temperature=0,
       model_kwargs={
-          "top_p": 0.9,
-          "seed": 376425
+          "top_p": 0.85,
+          "seed": 376425376425
       },
       model_name="llama3-groq-70b-8192-tool-use-preview",
       streaming=False,
@@ -29,10 +29,10 @@ groq_chat_tool_func = ChatGroq(
 
 groq_chat_question_helper = ChatGroq(
     groq_api_key=groq_api_key,
-    temperature=0.7,
-    model_name="llama3-8b-8192",
+    temperature=0.3,
+    model_name="llama3-70b-8192",
     model_kwargs={
-        "top_p": 0.9,
+        "top_p": 0.85,
         "seed": 69420
     },
     streaming=False

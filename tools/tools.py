@@ -3,7 +3,6 @@ import json
 from discord import Guild, Interaction, BaseActivity, Spotify
 from langchain.agents import Tool
 from langchain_core.tools import BaseTool
-# my modules
 from cache.custom_cache import cache
 
 def get_all_channels(channels=None):
@@ -42,18 +41,14 @@ class get_channel_history_by_id(BaseTool):
 
     async def _arun(self, channel_id):
         interaction_scope = get_interaction_scope()
-        print(f"\n\n\nCHANNEL_ID: {channel_id}\n\n\n\n")
         id = 0
         if "id" in channel_id:
             obj = json.loads(channel_id)
-            print(f"\n\n\nid...\n")
             id = obj["id"]
         elif "name" in channel_id:
             obj = json.loads(channel_id)
-            print(f"\n\n\nname...\n")
             id = obj["name"]
         else:
-            print(f"\n\n\nelse...\n")
             id = channel_id
 
         channel = interaction_scope.client.get_channel(int(id))
@@ -63,7 +58,6 @@ class get_channel_history_by_id(BaseTool):
         return messages
 
 def get_channel_by_name(name):
-    print(f"\n\n\n\n\n'name':\n{name}")
     channels = get_all_channels()
     for channel in channels:
         if channel["name"] in name.lower():
@@ -72,9 +66,7 @@ def get_channel_by_name(name):
             return json.dumps(channel, indent=2)
 
 def get_server_info(input):
-    print(f"\n\n\nINPUT FOR GET_SERVER_INFO: {input}\n\n")
     interaction_scope = get_interaction_scope()
-    print(f"\n\nGET_SERVER_INFO\n\n")
     guild = interaction_scope.guild
     members = get_all_members(guild.members)
 
@@ -88,8 +80,7 @@ def get_server_info(input):
         "members": members
     }
 
-    #return json.dumps({ "server_info": server_info }, indent=2)
-    return server_info
+    return json.dumps(server_info, indent=2)
 
 class get_members_server(BaseTool):
         name: str = "get_members_server"
@@ -104,21 +95,31 @@ class get_members_server(BaseTool):
         def _run(self):
             self
 
-        async def _arun(self, guild: Guild):
+        async def _arun(self, guild):
             print(f"\ncalling _arun for get_members_server!!!\n\n")
             json_guild = None
+            print(f"\n\nguild:\n{guild}\n")
             if isinstance(guild, str):
+                print(99999)
                 # TODO: this is a hacky thing to do because our model sometimes gives us some garbage string from out chain.
                 # to fix this, i probably need to tweak the prompt. but for now, we do this.
                 guild = guild.replace("'", '"')
+                print(99997)
                 start = guild.find('{')
+                print(999934)
                 end = guild.rfind('}')
+                print(99999234324)
                 clean_str = guild[start:end+1]
+                print(9999945435435)
                 j_guild = json.loads(clean_str)
-                json_guild = j_guild["server_info"]
+                print(99999345345)
+                json_guild = j_guild
+                print(9999345345459)
             else:
-                json_guild = guild["server_info"]
+                print(888888)
+                json_guild = guild
 
+            print(99993453459)
             return json.dumps({ "members": json_guild["members"] }, indent=2)
 
 def get_interaction_scope(interaction: Interaction = None):

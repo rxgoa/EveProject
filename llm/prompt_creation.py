@@ -15,7 +15,7 @@ class PromptCreation:
     prompt_describe_question = ChatPromptTemplate.from_messages(
         [
             SystemMessage(
-                content="You are an AI within a Discord server, tasked with clarifying user requests. Transform each user input into a precise question for another model. Keep your responses short, focused, and end with 'if so, please show it to me.' No additional commentary or checks are needed."
+                content="You are an AI within a Discord server, tasked with clarifying user requests. Transform each user input into a precise question for another model. Keep your responses short, focused. Focus on users, server and channel information about the request. No additional commentary or checks are needed."
             ),
             HumanMessagePromptTemplate.from_template(
                 "{human_input}"

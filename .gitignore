@@ -1,5 +1,5 @@
 __pycache__
+*/__pycache__
 env/
-test.py
-weather*.py
-h.py
+local_only/
+*.json

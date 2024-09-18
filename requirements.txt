@@ -4,7 +4,5 @@ python-dateutil
 langchain
 langchain-core
 langchain-groq
-ujson
-pydantic
+pydantic==2.9.1
 typing
-cachetools

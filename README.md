@@ -19,7 +19,7 @@ python3 main.py
 This is a simple Discord bot using `Langchain`(and it's memory function) for keeping track of conversations, `Groq` API integration for access to our models `llama3` and also `groq-fine-tunned-llama3`.
 
 # Langchain
-The memory retreivel for this project is simple and local (past 5 chats). Basically this function is very simple right now where, for example, if you ask Eve what the user is listening to and then you asked again (given the user changed the song), Eve will comment on that.
+The memory retreivel for this project is simple and local (past 5 chats). Basically this function is very simple right now where, for example, if you ask Eve what the user is listening to and then you asked again (given the user changed the song), Eve will comment on that. She also can check the list of members of the server, channels and messages.
 
 *First Song*
 ![](/images/eve_memory.png)

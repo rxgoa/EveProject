@@ -100,26 +100,17 @@ class get_members_server(BaseTool):
             json_guild = None
             print(f"\n\nguild:\n{guild}\n")
             if isinstance(guild, str):
-                print(99999)
                 # TODO: this is a hacky thing to do because our model sometimes gives us some garbage string from out chain.
                 # to fix this, i probably need to tweak the prompt. but for now, we do this.
                 guild = guild.replace("'", '"')
-                print(99997)
                 start = guild.find('{')
-                print(999934)
                 end = guild.rfind('}')
-                print(99999234324)
                 clean_str = guild[start:end+1]
-                print(9999945435435)
                 j_guild = json.loads(clean_str)
-                print(99999345345)
                 json_guild = j_guild
-                print(9999345345459)
             else:
-                print(888888)
                 json_guild = guild
 
-            print(99993453459)
             return json.dumps({ "members": json_guild["members"] }, indent=2)
 
 def get_interaction_scope(interaction: Interaction = None):

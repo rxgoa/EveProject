@@ -37,3 +37,7 @@ groq_chat_question_helper = ChatGroq(
     },
     streaming=False
 )
+
+GROQ_LLM = ChatGroq(
+   model="llama3-70b-8192"
+)

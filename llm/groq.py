@@ -29,7 +29,7 @@ groq_chat_tool_func = ChatGroq(
 
 groq_chat_question_helper = ChatGroq(
     groq_api_key=groq_api_key,
-    temperature=0.3,
+    temperature=0.4,
     model_name="llama3-70b-8192",
     model_kwargs={
         "top_p": 0.85,

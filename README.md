@@ -1,5 +1,5 @@
 # MVP - Discord bot
-This is a very MVP discord bot with a few features. This is very much a project for me to study the tech.
+This is a MVP discord bot with a few features like: checking people status, activities, channels, channels messages and general server information using a LLM. This is a project for me to study the tech.
 
 # LangGraph
 This is LangGraph version of the project. My older version using only LangChain is here [lang-chain-branch](https://github.com/rxgoa/EveProject/tree/lang-chain) branch.

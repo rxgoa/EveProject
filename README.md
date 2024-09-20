@@ -2,7 +2,7 @@
 This is a very MVP discord bot with a few features. This is very much a project for me to study the tech.
 
 # LangGraph
-I'll probably make another version of  this code but using LangGraph. Going to update `lang-graph` branch.
+I'll probably make another version of  this code but using LangGraph. Going to update [lang-graph](https://github.com/rxgoa/EveProject/tree/lang-graph) branch.
 
 # How to run
 You will need:

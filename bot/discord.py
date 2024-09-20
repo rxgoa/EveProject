@@ -3,11 +3,8 @@ import discord
 import json
 from discord import app_commands
 from discord.ext import commands
-# move this code to main.pyy
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
-# new
 from tools.graph import GraphTool
-from tools.tools import get_interaction_scope, get_all_channels, get_all_members, get_all_info_server #lmao find a better naming for this
 from llm.prompt_creation import PromptCreation
 
 class DiscordCommands(commands.Cog):
@@ -28,11 +25,14 @@ class DiscordCommands(commands.Cog):
 
         await interaction.response.send_message("Processing your request.. ⌛", ephemeral=True) # ephemeral == only the user who sent the message will see
 
+        # chain
+        graph = GraphTool()
+
         # setting up cache for the interaction
-        interaction_scope = get_interaction_scope(interaction)
-        get_all_info_server(interaction_scope.guild)
-        get_all_members(interaction_scope.guild.members)
-        get_all_channels(interaction_scope.guild.channels)
+        interaction_scope = graph.get_interaction_scope(interaction)
+        graph.get_all_info_server(interaction_scope.guild)
+        graph.get_all_members(interaction_scope.guild.members)
+        graph.get_all_channels(interaction_scope.guild.channels)
 
         #tool_names = [tool.name for tool in tools]
         #agent_executor = CreateAgent()
@@ -53,8 +53,7 @@ class DiscordCommands(commands.Cog):
             question_helped = prompt_ready.predict(human_input=question)
             print(f"\nQuestion generated: {question_helped}\n")
 
-            # chain
-            graph = GraphTool()
+
             inputs["initial_question"] = question_helped
             output = await graph.ainvoke(inputs)
 

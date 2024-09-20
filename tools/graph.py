@@ -57,6 +57,18 @@ class GraphTool:
      "question_categories": state["question_categories"]
      }
 
+  def get_interaction_scope(self, interaction):
+    return self._get_interaction_scope(interaction)
+
+  def get_all_info_server(self, guild):
+      return self._get_all_info_server(guild)
+
+  def get_all_members(self, members):
+      return self._get_all_members(members)
+
+  def get_all_channels(self, channels):
+      return self._get_all_channels(channels)
+
   def server_information(self, state):
     print(f"server_information node called!")
     print(f"categories yet to be processed: {state["categories_to_process"]}")
@@ -171,8 +183,14 @@ class GraphTool:
     else:
       return "final_response"
 
-  def _get_interaction_scope(interaction: List[object] = None):
-    print(cache)
+  def _get_all_info_server(self, guild = None):
+      if "get_all_info_server" in cache or guild is None:
+          return cache["get_all_info_server"]
+
+      cache.set_with_ttl("get_all_info_server", guild, 60)
+      return guild
+
+  def _get_interaction_scope(self, interaction: List[object] = None):
     if "get_interaction_scope" in cache or interaction is None:
         return cache["get_interaction_scope"]
 

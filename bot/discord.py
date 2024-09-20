@@ -1,5 +1,6 @@
 
 import discord
+import json
 from discord import app_commands
 from discord.ext import commands
 # move this code to main.pyy
@@ -39,6 +40,8 @@ class DiscordCommands(commands.Cog):
             "initial_question": question,
             "tools": ['server_information', 'members_information', 'channel_information_by_name', 'channel_history_information_by_id', 'channel_information_list'],
             "question_categories": [],
+            "scope": {},
+            "interaction": interaction,
             "categories_to_process": [],
             "num_steps": 0
         }
@@ -52,24 +55,25 @@ class DiscordCommands(commands.Cog):
 
             # chain
             graph = GraphTool()
-            output = graph.invoke(inputs)
+            output = await graph.ainvoke(inputs)
 
             # result = await agent_executor.ainvoke({"input": question_helped, "tool_names": tool_names })
 
             # #FIX: temporary code just to check outputs. should be remove later.
-            # with open("prompt_result.json", "w") as file:
-            #     json.dump(result, file)
+
 
             # eve final response
-            # prompt_template = prompt_creation.prompt_template()
-            # conversation_memory = prompt_creation.prompt_chain_memory(self.memory, prompt_template)
-            # send_to_eve = f"Initial question: {result['input']}. Answer to the question: {result['output']}"
-            # response = conversation_memory.predict(human_input=send_to_eve)
-            # human_input = {"human_input": send_to_eve}
-            # ai_output = {"ai": response}
-            # self.memory.save_context(human_input, ai_output)
+            prompt_template = prompt_creation.prompt_template()
+            conversation_memory = prompt_creation.prompt_chain_memory(self.memory, prompt_template)
+            send_to_eve = f"Initial question: {output['initial_question']}. Answer to the question in JSON format: {json.dumps(output['scope'], indent=2)}"
+            response = conversation_memory.predict(human_input=send_to_eve)
+            human_input = {"human_input": send_to_eve}
+            ai_output = {"ai": response}
+            with open("eve_result.json", "w") as file:
+                json.dump(response, file)
+            self.memory.save_context(human_input, ai_output)
 
-            await interaction.edit_original_response(content=output)
+            await interaction.edit_original_response(content=response)
         except Exception as e:
             print(e)
             await interaction.edit_original_response(content=e)

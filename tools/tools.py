@@ -114,7 +114,6 @@ class get_members_server(BaseTool):
             return json.dumps({ "members": json_guild["members"] }, indent=2)
 
 def get_interaction_scope(interaction: Interaction = None):
-    print(cache)
     if "get_interaction_scope" in cache or interaction is None:
         return cache["get_interaction_scope"]
 

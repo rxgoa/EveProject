@@ -17,4 +17,5 @@ class GraphState(TypedDict):
   scope: object
   question_categories: List[str]
   categories_to_process: List[str]
+  interaction: List[object]
   num_steps: int

@@ -8,8 +8,8 @@ prompt_category_graph = PromptTemplate(
     Conduct a comprehensive analysis of the input provided and categorize into the following categories:
         server_information - used when someone is asking about for information about the server. \
         server_information - also used when someone ask about activities in the server. Listening to music, streaming, gaming etc \
-        members_information - used when someone is asking about for information about the members of the server. Always make sure if you indentify as members_information also indentify as server_information.\
-        members_information - also used when someone ask about activities about members of the server. Listening to music, streaming, gaming etc \
+        members_information - used when someone is asking about for information about the members or users of the server. Always make sure if you indentify as members_information also indentify as server_information.\
+        members_information - also used when someone ask about activities about members or users of the server. Listening to music, streaming, gaming etc \
         channel_information_list - used when someone ask general information about channels without mentioning any specific channel name. \
         channel_information_list - Always make sure to identify server_information together with channel_information_list.  \
         channel_information_by_name - only use when someone passes a channel name on {initial_question} and if channel_information_list isn't identified. \

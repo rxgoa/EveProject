@@ -48,24 +48,20 @@ class DiscordCommands(commands.Cog):
         try:
             # setting up a call to a model to describre what the user wants.
             prompt_creation = PromptCreation()
-            # prompt_ready = prompt_creation.prompt_chain()
+            prompt_ready = prompt_creation.prompt_chain()
             # # clarify question
-            # question_helped = prompt_ready.predict(human_input=question)
-            # print(f"\nQuestion generated: {question_helped}\n")
+            question_helped = prompt_ready.predict(human_input=question)
+            print(f"\nQuestion generated: {question_helped}\n")
 
             # chain
             graph = GraphTool()
+            inputs["initial_question"] = question_helped
             output = await graph.ainvoke(inputs)
-
-            # result = await agent_executor.ainvoke({"input": question_helped, "tool_names": tool_names })
-
-            # #FIX: temporary code just to check outputs. should be remove later.
-
 
             # eve final response
             prompt_template = prompt_creation.prompt_template()
             conversation_memory = prompt_creation.prompt_chain_memory(self.memory, prompt_template)
-            send_to_eve = f"Initial question: {output['initial_question']}. Answer to the question in JSON format: {json.dumps(output['scope'], indent=2)}"
+            send_to_eve = f"Initial question: {question_helped}. Answer to the question in JSON format: {json.dumps(output['scope'], indent=2)}"
             response = conversation_memory.predict(human_input=send_to_eve)
             human_input = {"human_input": send_to_eve}
             ai_output = {"ai": response}

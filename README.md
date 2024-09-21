@@ -4,6 +4,11 @@ This is a MVP discord bot with a few features like: checking people status, acti
 # LangGraph
 This is LangGraph version of the project. My older version using only LangChain is here [lang-chain-branch](https://github.com/rxgoa/EveProject/tree/lang-chain) branch.
 
+# Diagram
+![Eve Mermaid Diagram](images/eve_diagram.png)
+
+You can generate the diagram running `create_graph_diagram.py` script.
+
 # How to run
 You will need:
 - Discord API Key

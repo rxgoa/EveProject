@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 from tools.graph import GraphTool
+
 from llm.prompt_creation import PromptCreation
 
 class DiscordCommands(commands.Cog):
@@ -34,8 +35,6 @@ class DiscordCommands(commands.Cog):
         graph.get_all_members(interaction_scope.guild.members)
         graph.get_all_channels(interaction_scope.guild.channels)
 
-        #tool_names = [tool.name for tool in tools]
-        #agent_executor = CreateAgent()
         inputs = {
             "initial_question": question,
             "tools": ['server_information', 'members_information', 'channel_information_by_name', 'channel_history_information_by_id', 'channel_information_list'],
@@ -49,10 +48,8 @@ class DiscordCommands(commands.Cog):
             # setting up a call to a model to describre what the user wants.
             prompt_creation = PromptCreation()
             prompt_ready = prompt_creation.prompt_chain()
-            # # clarify question
+            # clarify question
             question_helped = prompt_ready.predict(human_input=question)
-            print(f"\nQuestion generated: {question_helped}\n")
-
 
             inputs["initial_question"] = question_helped
             output = await graph.ainvoke(inputs)

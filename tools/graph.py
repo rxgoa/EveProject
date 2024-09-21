@@ -23,7 +23,7 @@ class GraphTool:
   def compile(self):
     self.app = self.workflow.compile()
 
-  def get_graph(self):
+  def get_graph_app(self):
     return self.app
 
   async def ainvoke(self, input):
